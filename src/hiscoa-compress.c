@@ -89,13 +89,9 @@ static void swap(unsigned *a, unsigned *b)
 
 static unsigned find_msb(unsigned val)
 {
-	/* FIXME do this faster */
-	unsigned nbits;
 	if (val == 0)
 		return 0;
-	for (nbits = 8 * sizeof(val) - 1; val < (1u << nbits); --nbits)
-		;
-	return nbits + 1;
+	return 8 * sizeof(val) - __builtin_clz(val);
 }
 
 static bool try_write_longrepeat(struct state *state)

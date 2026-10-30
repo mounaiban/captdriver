@@ -56,15 +56,15 @@ static void decode_status(const uint8_t *s, size_t size)
 {
 	status.status[0] = WORD(s[0], s[1]);
 
-	if (size <= 2)
-		return;
-
-	if (size > 8)
+	if (size > 4)
 		status.buf_level = s[4];  /* CAPT_BSTAT_BUF_LO / CAPT_XSTAT_BUF_LO */
+
+	if (size < 10)
+		return;
 
 	status.status[1] = WORD(s[8], s[9]);
 
-	if (size <= 10)
+	if (size < 40)
 		return;
 
 	status.aux            = s[CAPT_XSTAT_AUX];    /* Aux auxiliary engine status */
@@ -93,7 +93,8 @@ static void download_status(uint16_t cmd)
 	uint8_t buf[0x10000];
 	size_t size = sizeof(buf);
 	capt_sendrecv(cmd, NULL, 0, buf, &size);
-	decode_status(buf, size);
+	/* size counts the 4-byte reply header, but only the payload lands in buf */
+	decode_status(buf, size - 4);
 }
 
 void capt_init_status(void)

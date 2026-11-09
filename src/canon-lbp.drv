@@ -313,14 +313,14 @@ Version 0.1.4
 		{
 			Attribute "1284DeviceID" "" "MFG:Canon;MDL:LBP3010/LBP3018/LBP3050;CMD:CAPT;"
 			// PPD file name
-			*ModelName "LBP3010/LBP3018/LBP3050 r2c"
+			*ModelName "LBP3010/3018/3050 r2c"
 			FileName "CanonLBP-3010-3018-3050.ppd"
 			PCFileName "CNLB3K10.ppd"
 		}
 		{
 			/* LBP3100/LBP3108/LBP3150: captdriver drives them like the LBP3010 */
 			Attribute "1284DeviceID" "" "MFG:Canon;MDL:LBP3100/LBP3108/LBP3150;CMD:CAPT;"
-			ModelName "LBP3100/LBP3108/LBP3150 r2c"
+			ModelName "LBP3100/3108/3150 r2c"
 			FileName "CanonLBP-3100-3108-3150.ppd"
 			PCFileName "CNLB3K1.ppd"
 		}

@@ -18,6 +18,7 @@
  */
 
 #include "printer.h"
+#include "paper.h"
 
 #include "std.h"
 #include "capt-command.h"
@@ -94,6 +95,8 @@ static const struct printer_ops_s *find_ops(const char *model, size_t size)
 			default:
 				break;
 			}
+			if (! strcmp(mdl, "LBP6000/LBP6018"))
+				capt_is_lbp6000 = 1;
 			fprintf(stderr, "DEBUG: CAPT: found ops for printer '%s'\n", mdl);
 			return r->ops;
 		}

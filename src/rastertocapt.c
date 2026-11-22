@@ -28,6 +28,9 @@
 #include <string.h>
 
 #include <cups/raster.h>
+#include <cups/cups.h>
+#include <stdlib.h>
+#include <math.h>
 
 
 struct cached_page_s {
@@ -46,6 +49,25 @@ const struct printer_ops_s *ops;
 struct printer_state_s *state = NULL;
 struct cached_page_s *cached_page = NULL;
 cups_raster_t *raster;
+
+/* fine-tuning offsets in mm (+x = right, +y = down), from job options
+ * capt-xshift-mm and capt-yshift-mm */
+static double xshift_mm = 0.0;
+static double yshift_mm = 0.0;
+
+/* copy line_size bytes starting at bit 'off' of src (may be negative) */
+static void copy_bits(uint8_t *dst, unsigned nbytes, const uint8_t *src, long srclen, long off)
+{
+	unsigned d;
+	for (d = 0; d < nbytes; ++d) {
+		long b = off + 8L * d;
+		long byte = (b >= 0) ? b / 8 : -((-b + 7) / 8);
+		unsigned sh = (unsigned) (b - byte * 8);
+		unsigned hi = (byte >= 0 && byte < srclen) ? src[byte] : 0;
+		unsigned lo = (byte + 1 >= 0 && byte + 1 < srclen) ? src[byte + 1] : 0;
+		dst[d] = (uint8_t) (sh ? ((hi << sh) | (lo >> (8 - sh))) : hi);
+	}
+}
 
 /* compressor state */
 uint8_t *linebuf = NULL;
@@ -152,6 +174,21 @@ static void compress_page_data(struct printer_state_s *state,
 	if (! compbuf)
 		abort();
 
+	long xoff_bits = (long) dims->crop_x_bits - lround(xshift_mm * dims->xdpi / 25.4);
+	long yoff = (long) dims->crop_y_lines - lround(yshift_mm * dims->ydpi / 25.4);
+	int bitmode = capt_geometry_canon || xoff_bits != 0;
+	unsigned next_src = 0;
+
+	/* skip raster lines above the image area */
+	for (; yoff > 0 && (long) next_src < yoff && next_src < header->cupsHeight; ++next_src)
+		cupsRasterReadPixels(raster, linebuf, header->cupsBytesPerLine);
+
+	if (! capt_geometry_canon && xoff_bits) {
+		/* legacy centring plus a manual shift */
+		xoff_bits += 8L * (long) shiftl - 8L * (long) shiftb;
+	}
+	fprintf(stderr, "DEBUG: CAPT: raster offset x=%ld bits, y=%ld lines\n", xoff_bits, yoff);
+
 	for (iband = 0; iband * dims->band_size < dims->num_lines; ++iband) {
 		struct band_list_s *new_band;
 		unsigned start = iband * dims->band_size;
@@ -162,16 +199,22 @@ static void compress_page_data(struct printer_state_s *state,
 		if (nlines + start >= dims->num_lines)
 			nlines = dims->num_lines - start;
 		for (iline = 0; iline < nlines; ++iline) {
-			if (iline + start < header->cupsHeight) {
+			long src = (long) (iline + start) + yoff;
+			if (src >= 0 && src < (long) header->cupsHeight) {
 				if (cupsRasterReadPixels(raster, linebuf, header->cupsBytesPerLine)
 								!= header->cupsBytesPerLine) {
 					fprintf(stderr, "ERROR: CAPT: broken raster file\n");
 					exit(1);
 				}
+				++next_src;
 			} else {
 				memset(linebuf, 0, header->cupsBytesPerLine);
 			}
-			memcpy(bandbuf + iline * dims->line_size + shiftb, linebuf + shiftl, csize);
+			if (bitmode)
+				copy_bits(bandbuf + iline * dims->line_size, dims->line_size,
+					linebuf, header->cupsBytesPerLine, xoff_bits);
+			else
+				memcpy(bandbuf + iline * dims->line_size + shiftb, linebuf + shiftl, csize);
 		}
 		size = state->ops->compress_band(state, compbuf, compsize, bandbuf, dims->line_size, nlines);
 		new_band = calloc(1, sizeof_struct_band_list_s(size));
@@ -188,7 +231,7 @@ static void compress_page_data(struct printer_state_s *state,
 	}
 
 	/* discard end of image, if any */
-	for (i = dims->num_lines; i < header->cupsHeight; ++i)
+	for (i = next_src; i < header->cupsHeight; ++i)
 		cupsRasterReadPixels(raster, linebuf, header->cupsBytesPerLine);
 
 	free_buffers();
@@ -363,6 +406,36 @@ int main(int argc, char *argv[])
 	if (argc < 6 || argc > 7) {
 		fprintf(stderr, "Usage: %s job-id user title copies options [file]\n", argv[0]);
 		return 1;
+	}
+
+	{
+		cups_option_t *opts = NULL;
+		int nopts = cupsParseOptions(argv[5], 0, &opts);
+		const char *v;
+		if ((v = cupsGetOption("capt-geometry", nopts, opts))) {
+			if (! strcmp(v, "legacy"))
+				capt_geometry_canon = 0;
+			else if (! strcmp(v, "canon"))
+				capt_geometry_canon = 1;
+		}
+		if ((v = cupsGetOption("capt-canon-magic", nopts, opts)) && ! strcmp(v, "off"))
+			capt_canon_magic = 0;
+		if ((v = cupsGetOption("capt-margin-mm", nopts, opts))) {
+			double m = strtod(v, NULL);
+			if (m >= 0.0 && m <= 20.0)
+				capt_margin_mm = m;
+		}
+		if ((v = cupsGetOption("capt-xshift-mm", nopts, opts))) {
+			double m = strtod(v, NULL);
+			if (m >= -20.0 && m <= 20.0)
+				xshift_mm = m;
+		}
+		if ((v = cupsGetOption("capt-yshift-mm", nopts, opts))) {
+			double m = strtod(v, NULL);
+			if (m >= -30.0 && m <= 30.0)
+				yshift_mm = m;
+		}
+		cupsFreeOptions(nopts, opts);
 	}
 
 	if (argc == 7) {

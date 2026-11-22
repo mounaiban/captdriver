@@ -39,6 +39,20 @@ struct page_dims_s {
 	unsigned line_size;
 	unsigned band_size;
 	unsigned num_lines;
+	/* Canon-style geometry: how much of the CUPS raster to skip */
+	int crop_x_bits;	/* may be negative: pad instead of crop */
+	int crop_y_lines;
+	unsigned xdpi;
+	unsigned ydpi;
 };
+
+/* 1 = Canon-style geometry, 0 = original captdriver behaviour,
+ * -1 = automatic (Canon-style on printers known to need it: LBP6000) */
+extern int capt_geometry_canon;
+/* set by printer detection */
+extern int capt_is_lbp6000;
+extern double capt_margin_mm;
+/* 1 = send the LBP6000 page-parameter header seen from Canon's driver */
+extern int capt_canon_magic;
 
 void page_set_dims(struct page_dims_s *dims, const struct cups_page_header2_s *header);

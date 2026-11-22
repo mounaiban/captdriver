@@ -13,7 +13,7 @@ rastertocapt_SOURCES = rastertocapt.c \
 
 rastertocapt_SOURCES += prn_lbp2900.c
 
-rastertocapt_LDADD = $(CUPS_LIBS)
+rastertocapt_LDADD = $(CUPS_LIBS) -lm
 
 nodist_data_DATA = Makefile.in
 

@@ -193,8 +193,11 @@ static void lbp3010_job_prologue(struct printer_state_s *state)
 	lbp2900_wait_ready(state->ops);
 }
 
+static bool is_lbp6000 = false;
+
 static void lbp6000_job_prologue(struct printer_state_s *state)
 {
+	is_lbp6000 = true;
 	(void) state;
 	uint8_t buf[8];
 	size_t size;
@@ -317,7 +320,24 @@ static bool lbp2900_page_prologue(struct printer_state_s *state, const struct pa
 	}
 
 	capt_multi_begin(CAPT_SET_PARMS);
-	capt_multi_add(CAPT_SET_PARM_PAGE, pageparms, sizeof(pageparms));
+	if ((is_lbp6000 || capt_is_lbp6000) && capt_canon_magic) {
+		/*
+		 * Canon's Windows driver sends a 68-byte page-parameter block
+		 * to the LBP6000 that starts 05 00 BC 09 (captdriver sends the
+		 * LBP2900 value 00 00 30 2A). Bytes 2-3 are documented as a
+		 * model-specific constant.
+		 */
+		uint8_t pp6000[68];
+		memset(pp6000, 0, sizeof(pp6000));
+		memcpy(pp6000, pageparms, sizeof(pageparms));
+		pp6000[0] = 0x05;
+		pp6000[1] = 0x00;
+		pp6000[2] = 0xBC;
+		pp6000[3] = 0x09;
+		capt_multi_add(CAPT_SET_PARM_PAGE, pp6000, sizeof(pp6000));
+	} else {
+		capt_multi_add(CAPT_SET_PARM_PAGE, pageparms, sizeof(pageparms));
+	}
 	s = hiscoa_format_params(buf, sizeof(buf), &hiscoa_default_params);
 	capt_multi_add(CAPT_SET_PARM_HISCOA, buf, s);
 	capt_multi_add(CAPT_SET_PARM_1, NULL, 0);
